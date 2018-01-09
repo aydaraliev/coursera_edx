@@ -1,0 +1,213 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+#package to arrange multiple plots on one picture
+library(gridExtra)
+#package for ggplot2 framework to create mosaic plots
+library(ggmosaic)
+#package for linear models diagnostics
+library(ggfortify)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The dataset consists of 651 movies released before 2016, which were **randomly sampled** from web sites rottentomatoes.com and IMDB.com.
+
+Since random sampling was used and sample size is less than 10% of all movies released before 2016 we can generalize the model to all movies publicly released **for english speaking viewers**. At the same time we can only imply association, since it was not an experiment and study is observational.
+
+The only **source of bias** is that both websites are centered around english speaking viewers. Which limits our model applications. For example we would need another dataset to create a model for movies released in other languages.
+
+* * *
+
+## Part 2: Research question
+
+###Do movies with more votes and where main actor/actress/director are Oscar winners have higher IMDB rating?
+
+As a person who does not follow film industry news closely it is interesting for me to check if movies where main characters or director won oscar have higher rating. To my surprise a google search showed that many well known actors, like Johny Depp (Pirates of the Carribean), Samuel Jackson (Pulp Fiction) and many others do not have one, despite the fact that they played in very popular movies. I also want to check if movies which have more votes, hence more attention, tend to have higher rating on average.
+
+## Part 3: Exploratory data analysis
+
+First let's subset our dataset down to the variables of interest.
+
+```{r}
+movies_oscar = select(movies, imdb_rating, imdb_num_votes, best_actor_win, best_actress_win, best_dir_win)
+```
+
+Now we need to examine proportions of Oscar winners in our dataset.
+
+```{r}
+to_mosaic = movies_oscar %>% 
+  group_by(best_dir_win , best_actor_win, best_actress_win) %>%
+  summarise(count = n()) %>% mutate(perc=count/651)
+
+ggplot(to_mosaic) + 
+  geom_mosaic(aes(weight = perc, x = product(best_actor_win,
+                  best_actress_win, best_dir_win), fill = best_actress_win), divider=mosaic("h")) +
+  theme(axis.text.x=element_text(angle=-50, hjust= .1)) +
+  labs(x="Best actor win : Best director win", title='Best actor/actress/director Oscar win') + guides(fill=guide_legend(title = "actress win", reverse = TRUE))
+```
+
+**Figure 1**: Proportion of combination of responses (e.g. yes/yes/yes) was selected as a weighting variable. Horizontal split corresponds to whether or not main actress won an oscar. Vertical split corresponds to whether or not best actor and director won an oscar. As expected most movies are the ones where neither of three received an oscar. Interestingly, movies where main actor is a winner are more likely to have an actress who is also a winner. 
+
+Now let's examine the actual numbers:
+```{r}
+movies_oscar %>% 
+  group_by(best_dir_win , best_actor_win, best_actress_win) %>%
+  summarise(count = n()) %>% mutate(perc=count/651)
+```
+**Table 1**: We can see that there are four movies where all three actor/actress/director received the award.
+
+Now let's compare if IMDB rating changes with actor/actress/director status.
+
+```{r}
+p1 = ggplot(movies_oscar, aes(x =best_actress_win, y = imdb_rating)) + geom_boxplot() + labs(x = "Best actress win", y = "IMDB rating")
+p2 = ggplot(movies_oscar, aes(x =best_actor_win, y = imdb_rating)) + geom_boxplot() + labs(x = "Best actor win", y = "IMDB rating")
+p3 = ggplot(movies_oscar, aes(x =best_dir_win, y = imdb_rating)) + geom_boxplot() + labs(x = "Best director win", y = "IMDB rating")
+
+grid.arrange(p1,p2,p3, layout_matrix = rbind(c(1,2,3)))
+```
+
+**Figure 2**: We can see that director win has the biggest impact, while actor or actress wins only marginaly affect the rating. We can suspect that overall IMDB score distribution is left skewed, because there are quite a few outliers in "no" part of the dataset.
+
+Let's examine the IMDB rating distribution.
+
+```{r}
+ggplot(movies_oscar) + geom_histogram(aes(x=imdb_rating), bins = 25)+ labs(y = "count", x = "IMDB rating")
+```
+
+**Figure 3**: The distribution is indeed left skewed and it looks like it is centered around 7. This means that people usually evaluate movies between 5 and 7.5.
+
+* * *
+
+## Part 4: Modeling
+
+Let's start with examining the relationship between number of votes and imdb rating.
+
+```{r}
+ggplot(movies_oscar, aes(imdb_rating,imdb_num_votes)) + geom_point() + geom_smooth(method='lm', formula=y~x)
+```
+
+**Figure 5**: It looks like there is some dependency. Outliers which have many votes do not affect the slope of the line greately. I am not running diagnostics on this model because I will not use it. The main purpouse of including it here is to show that outliers are **not leveraging**, because in other case I would have to remove the outliers.
+
+Now let's create a model taking into account all variables of interest: 
+IMDB rating ~ number of votest + best actor/actress/director win. 
+
+$H_0$: Number of votes and having an oscar do not increase movie's rating.
+
+$H_A$: Number of votes and having an oscar do increase movie's rating.
+
+```{r}
+oscar_model = lm(imdb_rating ~ imdb_num_votes + best_actor_win + best_actress_win + best_dir_win, movies_oscar)
+summary(oscar_model)
+```
+
+**Table 2**: Adjusted $R^2$ tells us that only 11% of the variation in the response variable (IMDB rating) is explained by the model. Which is quite low and suggests that this is not a good model. P-values for "actor" and "actress" are much larger than 0.05 and don't pass the t-test, even after we divide them by 2, because we use one sided test. However **overal F-test p-value** is really small, which allows us to **reject** $H_0$. Passing the F-test basically tells us that the model **predicts better than intercept only model** (just taking the average).
+
+
+Next step is to adjust the model. I will use **backward elimination**, because I specified all the variables of interest in the beginning and I am not introducing new ones as we proceed.
+
+```{r}
+model_no_votes = lm(imdb_rating ~ best_actor_win + best_actress_win + best_dir_win, movies_oscar)
+model_no_actor = lm(imdb_rating ~ imdb_num_votes + best_actress_win + best_dir_win, movies_oscar)
+model_no_actress = lm(imdb_rating ~ imdb_num_votes + best_actor_win + best_dir_win, movies_oscar)
+model_no_dir = lm(imdb_rating ~ imdb_num_votes + best_actor_win + best_actress_win, movies_oscar)
+
+summary(model_no_votes)$adj.r.squared
+summary(model_no_actor)$adj.r.squared
+summary(model_no_actress)$adj.r.squared
+summary(model_no_dir)$adj.r.squared
+```
+
+In the code above I have created the models by omitting one of the variables for each model. The model selection is based on maximizing $R^2$. In our case model without "actress" variable showed the highest $R^2$, however it only explains 0.8 percent more variation than original model, 0.111 vs 0.111818.
+
+Now I need to run diagnostics on the model.
+
+```{r}
+autoplot(model_no_actress)
+```
+**Figure 6**: It appears that our model does not perform very well. This is because **homoscedasticity** condition is not met. In other words the residuals data points do not variate equally around the fitted values. This is probably due to the fact that movie rating distribution is **left skewed**. We can also see skeweness in Normal Q-Q plot. Left tail of the Q-Q plot is formed by movies with very low IMDB rating, which does not match theoretical normal distribution, in other words their rating is much lower than expected. The good thing is that relationship between residuals and fitted values seems to be linear and there are no leveraging points.
+
+Now let's take a look at coefficient table of our model withot an actress variable:
+```{r}
+summary(model_no_actress)$coefficients
+```
+
+**Table 3**: Let me remind that our $H_A$ is that number of votes and having an oscar do increase movie's rating. Since proposed test is one sided we have to split p-values (Pr(>|t|) column) by 2. Number of votes on IMDB and binary variable "director" (p-value = 0.03) pass the test. However "actor" variable does not (p-value = 0.203), which means that increase in rating added by main actor having an oscar is statistically insignificant. Estimates are positive, which means that they increase the rating, for example "director variable" increases the rating by 0.3 times 1 if director has an oscar or 0 if he does not. Similarly for number of votes, estimate times number of votes. 
+
+Let's see if removing an actor from the model will increase explained variation ($R^2$).
+
+```{r}
+model_no_actress_no_actor = lm(imdb_rating ~ imdb_num_votes + best_dir_win, movies_oscar)
+
+summary(model_no_actress)$adj.r.squared
+summary(model_no_actress_no_actor)$adj.r.squared
+```
+We see slight increase in $R^2$. I will use both models to make prediction, however I doubt that model will perform well, since the model explains only 11.2 percent of the variation.
+
+* * *
+
+## Part 5: Prediction
+
+I will check models using 3 movies of 2017 from IMDB, one with low rating, one with average rating and one with high rating.
+
+The movies are:
+
+1. Blade Runner 2049, rating 8.4, 150,662 votes, noone has an oscar.
+
+2. Last Flag Flying, rating 7.3, 858 votes, director has an oscar.
+
+3. Fifty Shades Darker, rating 4.6, 59,459 votes, noone has an oscar.
+
+lets create a dataframe for prediction.
+
+```{r}
+imdb_rating = c(8.4, 7.3, 4.6)
+imdb_num_votes = c(150662, 858, 49459)
+best_actor_win = c("no", "no", "no")
+best_dir_win = c("no", "yes", "no")
+predict_df = data.frame(imdb_rating, imdb_num_votes, best_actor_win, best_dir_win)
+```
+
+Now let's make the prediction.
+
+```{r}
+print("no actress model")
+predict(model_no_actress, predict_df, interval = "confidence")
+print("no actor and actress model")
+predict(model_no_actress_no_actor, predict_df, interval = "confidence")
+```
+This predictions are in the following order: Blade Runned 2049 (rating 8.4), Last Flag Flying (7.3), Fifty Shades Darker (4.6). The model is not working, because real rating is **not within confidence interval**. 
+
+_interval = "confidence"_ parameter passed to the predict function computes interval uses the following formula: $b_i \pm t^*_{df}SE_{b_i}$. The results are for 95% confidence interval ($\alpha = 0.05$)
+
+* * *
+
+## Part 6: Conclusion
+
+Number of votes on IMDB and having an Oscar by main actor, actress or director **are not valuable predictors** of movie sucess. I was considering other variables, such as rotten tomatoes rating, but decided that it would be trivial, because strong linear relationship between IMDB rating and RT rating is expected.
+
+The model I've created has only one shortcoming, but it is a critical one: my model does not work. If I had to create new model I would only keep one independent variable from my model - number of votes on IMDB. What other variables to include is a question of for future research.

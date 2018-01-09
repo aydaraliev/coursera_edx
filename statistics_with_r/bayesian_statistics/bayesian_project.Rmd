@@ -1,0 +1,283 @@
+---
+title: "Bayesian modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+```{r global_options, include=FALSE}
+  knitr::opts_chunk$set(warning=FALSE)
+```
+
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(BAS)
+#multiple graphs on one picture
+library(gridExtra)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `movies`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The dataset consists of 651 movies released before 2016, which were randomly sampled from web sites rottentomatoes.com and IMDB.com.
+
+Since random sampling was used and sample size is less than 10% of all movies released before 2016 we can generalize the model to all movies publicly released for english speaking viewers. At the same time we can only imply association, since it was not an experiment and study is observational.
+
+The only source of bias is that both websites are centered around english speaking viewers. Which limits our model applications. For example we would need another dataset to create a model for movies released in other languages.
+
+
+* * *
+
+## Part 2: Data manipulation
+
+First of all as project information suggests we need to create new columns in the "movies" data frame. All new columns are 2 level vectors with values "yes" and "no".  Names of the columns are the following: feature_film, drama, mpaa_rating_R, oscar_season and summer_season.
+
+```{r}
+movies <- movies %>% mutate(
+  feature_film = as.factor(if_else(title_type == 'Feature Film', 'yes', 'no')),
+  drama = as.factor(if_else(genre == 'Drama', 'yes', 'no')),
+  mpaa_rating_R = as.factor(if_else(mpaa_rating == 'R', 'yes', 'no')),
+  oscar_season = as.factor(if_else((thtr_rel_month == 10 | thtr_rel_month == 11 |
+                                      thtr_rel_month == 12), 'yes', 'no')),
+  summer_season = as.factor(if_else((thtr_rel_month == 5 |
+                                       thtr_rel_month == 6 |
+                                       thtr_rel_month == 7 |
+                                       thtr_rel_month == 8), 'yes', 'no')))
+```
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+`audience score` is the response variable we are interested in. It show how audience from Rotten Tomatoes website rated a movie. First let's examine the distribution of the variable.
+
+```{r}
+#creating the mode function
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+#plotting
+ggplot(movies, aes(x = audience_score)) + 
+  geom_histogram(color = 'black', fill='#529eb7', bins = 40)+
+  geom_vline(mapping = aes(xintercept = mean(audience_score), color = 'mean'),
+             size = 1) +
+  geom_vline(mapping = aes(xintercept = median(audience_score), 
+                           color = 'median'), size = 1) +
+  geom_vline(mapping = aes(xintercept = Mode(audience_score),color = 'mode'),
+             size = 1)+
+  scale_color_manual(name = "statistics", 
+                    values = c(median = "green", mean = "red", mode = "blue"))
+#numeric values
+summary(movies$audience_score)
+sprintf("Mode is equal to %i", Mode(movies$audience_score))
+```
+
+Figure 1. We can see that distribution of `audience_score` variable is left skewed. This is because we can see left tail and also because mean is smaller than median and mode.
+
+Now let's examine if variables which we just created differ.
+
+```{r}
+#wrap boxplot into a function
+create_boxplot <- function(data, x, y) {
+  ggplot(data, aes_string(x = x, y = y, fill = x)) +
+    geom_boxplot()
+}
+#create individual plots
+p1 = create_boxplot(movies, "feature_film", "audience_score")
+p2 = create_boxplot(movies, "drama", "audience_score")
+p3 = create_boxplot(movies, "mpaa_rating_R", "audience_score")
+p4 = create_boxplot(movies, "oscar_season", "audience_score")
+p5 = create_boxplot(movies, "summer_season", "audience_score")
+#plot
+grid.arrange(p1,p2,p3,p4,p5, nrow = 2)
+```
+
+Figure 2. We can see that in all cases there is a slight difference between "yes" and "no" answers. Documentaries have higher scores than feature films. Drama movies have higher scores than others. Finally movies released during the Oscar season score higher on average than movies released at other time. In case with MPAA rating variable and summer season variable difference is quite small.
+
+Now let's check if we can confirm the finding above statistically. I will use *bayes_inference* function from `statsr` package to check if newly created variables affect the `audience_score` variable. Unfortunately one sided hypothesis testing is not currently supported.
+
+```{r}
+ff = bayes_inference(y = audience_score, x = feature_film, data = movies, statistic = "mean", type = "ht", null = 0, alternative = "twosided", show_summ = FALSE, show_res = FALSE, show_plot = FALSE)
+drama = bayes_inference(y = audience_score, x = drama, data = movies, statistic = "mean", type = "ht", null = 0, alternative = "twosided", show_summ = FALSE, show_res = FALSE, show_plot = FALSE)
+mpaa = bayes_inference(y = audience_score, x = mpaa_rating_R, data = movies, statistic = "mean", type = "ht", null = 0, alternative = "twosided", show_summ = FALSE, show_res = FALSE, show_plot = FALSE)
+oscar_s = bayes_inference(y = audience_score, x = oscar_season, data = movies, statistic = "mean", type = "ht", null = 0, alternative = "twosided", show_summ = FALSE, show_res = FALSE, show_plot = FALSE)
+summer_s = bayes_inference(y = audience_score, x = summer_season, data = movies, statistic = "mean", type = "ht", null = 0, alternative = "twosided", show_summ = FALSE, show_res = FALSE, show_plot = FALSE)
+
+#dataframe for BF
+bf = data.frame(
+  order = c(ff$order, drama$order, mpaa$order, oscar_s$order, summer_s$order), Bayesian_Factor = c(ff$BF, drama$BF, mpaa$BF, oscar_s$BF, summer_s$BF), 
+  Post_prob = c(ff$post_H2, drama$post_H2, mpaa$post_H2, oscar_s$post_H2, summer_s$post_H2))
+rownames(bf) = c("Factor_film", "Drama", "mpaa_rating_R", "Oscar_season", "Summer_season")
+bf
+```
+
+We can see that variables `feature_film` and `drama` affect audience score significantly. In both cases tests provide very stron evidence against $H_1$: explanatory variable(e.g. `feature_filem`) does not affect `audience_score`. In all other cases bayesian factor suggest strong evidence **against** $H_2$: explanatory variable affects the `audience_score`(response variable).
+
+I believe that variables `mpaa_rating_R`, `oscar_season` and `summer_season` will be eliminated during modeling process.
+
+* * *
+
+## Part 4: Modeling
+
+First let's subset our dataset down to the variables of interest and remove NA's.
+
+```{r}
+columns <- c( 'audience_score', 'feature_film', 'drama', 'runtime', 'mpaa_rating_R', 'thtr_rel_year', 'oscar_season', 'summer_season', 'imdb_rating', 'imdb_num_votes', 'critics_score', 'best_pic_nom', 'best_pic_win', 'best_actor_win', 'best_actress_win', 'best_dir_win', 'top200_box')
+#remove NAs
+movies <- na.omit(movies)
+#subsetting
+movies <- movies[,columns]
+#checking dimensions
+dim(movies)
+```
+
+After omiting NA values we have 619 complete cases with 17 variables.
+
+###Now let's figure out what parameters to use to build the model. 
+
+We will start with the full model. I will use Markov Chain Monte Carlo method for sampling models during fitting. 
+
+```{r}
+movies_bayesian <- bas.lm(audience_score ~ ., data=movies, method='MCMC',
+                 prior='ZS-null', modelprior=uniform())
+par(mfrow=c(2,2))
+plot(movies_bayesian, which=c(1, 2), ask=FALSE)
+plot(movies_bayesian, which=4, ask=FALSE, cex.lab=0.5)
+```
+
+Figure 3. The residuals plot has curved pattern because model tends to estimate movies score too low. The Model Probabilities plot shows that probability converged to 1 at 3.5k combinations, so we did not spend additional time checking all $2^{16})$ combinations. Inclusion probabilities graph shows with what probability each parameter was included.
+
+Now let's visualize the model space.
+
+```{r}
+image(movies_bayesian, rotate=FALSE)
+```
+
+Figure 4. We can see that most valuable predictors are `imdb_rating`, `critics_score` and to a lesser extent `runtime`. The fact the IMDB rating (movie rating from IMDB website) and critics score (critics score from RT website) are almost always included in the model is not really surprising as strong relationship with audience score is expected.
+
+Now let's create a new model including only valuable predictors. We don't need to use MCMC since there the number of combinations is only $2^{3}$.
+
+```{r}
+bayesian_movies_reduced = bas.lm(audience_score ~ imdb_rating + critics_score + runtime, data = movies, prior = "BIC", modelprior = uniform())
+coefficients(bayesian_movies_reduced)
+```
+Posterior mean and posterior standard deviation are self explanatory. Post P(B != 0) column provides probability that the coefficient is not 0.
+
+Now let's select the best estimator (bayesian model averaging[BMA], best predictive model[BPM], highest probability model[HPM], median probability model[MPM]) for our model using cross validation.
+
+```{r}
+n = nrow(movies)
+#cross validation
+n_cv = 100
+ape = matrix(NA, ncol=4, nrow=n_cv)
+colnames(ape) = c("BMA", "BPM", "HPM", "MPM")
+
+for (i in 1:n_cv) {
+  train = sample(1:n, size=round(.90*n), replace=FALSE)
+  lmovies_train = movies[train,]
+  lmovies_test = movies[-train,]
+
+  bayesian_movies_reduced = bas.lm(audience_score ~ imdb_rating + critics_score + runtime, data = movies, prior = "BIC", modelprior = uniform())
+  
+  yhat_bma = predict(bayesian_movies_reduced, lmovies_test, estimator="BMA")$fit
+  yhat_hpm = predict(bayesian_movies_reduced, lmovies_test, estimator="HPM")$fit
+  yhat_mpm = predict(bayesian_movies_reduced, lmovies_test, estimator="MPM")$fit
+  yhat_bpm = predict(bayesian_movies_reduced, lmovies_test, estimator="BPM")$fit
+  ape[i, "BMA"] = cv.summary.bas(yhat_bma, lmovies_test$audience_score)
+  ape[i, "BPM"] = cv.summary.bas(yhat_bpm, lmovies_test$audience_score)
+  ape[i, "HPM"] = cv.summary.bas(yhat_hpm, lmovies_test$audience_score)
+  ape[i, "MPM"] = cv.summary.bas(yhat_mpm, lmovies_test$audience_score)
+}
+boxplot(ape)
+apply(ape, 2, mean)
+```
+```{r}
+
+```
+
+Judging by the mean it seems like the **BPM**, **HPM** and **MPM** estimators produce the same error rates, **BMA** produces the highest. So I will use **BPM** for prediction. It is also important to note that difference between **BMA** and others is only about ~0.01 percent.
+
+* * *
+
+## Part 5: Prediction
+
+Let's pick three movies. One with average rating, one with high rating and one which scored bad.
+
+1. Get Out - 99% critics rating, 87% audience rating, 7.7 IMDB rating.
+2. Sweet Virginia - 77% critics rating, 64% audience rating, 6.3 IMBD rating.
+3. Just Getting Started - 5% critics rating, 17% audience rating, 3.9 IMDB rating.
+
+
+```{r}
+get_out = data.frame(imdb_rating = 7.7, critics_score = 99, runtime = 104)
+sweet_virginia = data.frame(imdb_rating = 6.3, critics_score = 77, runtime = 93)
+just_getting_started = data.frame(imdb_rating = 3.9, critics_score = 5, runtime = 91)
+#prediction Get Out
+get_out_predict <- predict(bayesian_movies_reduced, newdata = get_out, estimator = 'BPM', se.fit = TRUE)
+ci_get_out = confint(get_out_predict, estimator="BPM")
+#prediction Sweet Virginia
+sweet_virginia_predict <- predict(bayesian_movies_reduced, newdata = sweet_virginia, estimator = 'BPM', se.fit = TRUE)
+ci_sweet_virginia = confint(sweet_virginia_predict, estimator="BPM")
+#prediction Jsut Getting Started
+jgs_predict <- predict(bayesian_movies_reduced, newdata = just_getting_started, estimator = 'BPM', se.fit = TRUE)
+ci_jgs = confint(jgs_predict, estimator="BPM")
+```
+
+Now lets examine the results.
+
+Prediction interval and prediction for **Get Out** movie is:
+```{r}
+ci_get_out[1,]
+```
+
+The real `audience_score` value is 87, which is pretty close.
+
+Next is **Sweet Virginia**
+
+```{r}
+ci_sweet_virginia[1,]
+```
+The real rating of the movie is 64, which is slightly off but again pretty close.
+
+And finally our low ranking movie **Just Getting Started**
+
+```{r}
+ci_jgs[1,]
+```
+The model overestimated the rating by ~3 points. With real rating being equal to 17.
+
+* * *
+
+## Part 6: Conclusion
+After the analysis I can conclude that most of the suggested variables are useless for `audience_score` prediction. In fact model utilizing only 3 variables, 2 of which are other ratings, is sufficient for predicting the response variable. However I think the finding it trivial, because ratings are expected to be highly corellated. In other words it is not really a surprise that movies which scored high on IMDB have higher `audience_score` on rotten tomatoes. 
+With that being sad the model makes good predictions. The only unexpected variable which also affects the rating is `runtime`, however the probability that `runtime` coefficient is not zero is only 50%, with probabilities for other rating coefficients being close to 1. 
+
+It seems that identifying variables which are not trivial requires more sophisticated techniques, or they might not affect the rating at all.
+
+## Part 7: References
+I have borrowed code for estimator cross-validation from week 4 lab supplmentary materials.
+https://www.coursera.org/learn/bayesian/supplement/HJxzL/week-4-lab-supplement

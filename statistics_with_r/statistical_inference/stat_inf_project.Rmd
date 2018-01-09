@@ -1,0 +1,228 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(gridExtra)
+library(knitr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `gss`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The study is designed to study growing complexity of American Society and aims to describe trends, attitudes and behaviours in various subgroups of the population.
+
+The dataset provided is a subset of the original dataset and contains 57061 individuals who responded to 114 questions. The sample is multistage probability (random) sample. Selection was based on area, the units of selection were block groups and enumeration districts, those were stratified before **random selection** of individuals. At the block level quotas by sex, age, and employment status were used. To reduce not-at-home bias interviewers were given instruction to canvass after 3 p.m. on weekends and holidays. Methods of interview conduct:  computer-assisted personal interview (CAPI), face-to-face interview, telephone interview.
+
+The study includes less than 10% of the population, thus samples are **independent** of each other. The study is **observational**, thus we can only imply **association**, but not **causation**. Considering all of the above the dataset **can be generalized** to the US population.
+
+* * *
+
+## Part 2: Research question
+
+### 1. Do women estimate their chances of finding an equally good job same as men?
+
+Gender equality improved since the beginning of the 20th century, however there is an oppinion that women are discriminated at work and when entering employment. I will compare if there is a difference in how men and women estimate their chances of finding an equally good job when fired, blocking the population in bins by years of study.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+### 1. Do women estimate their chances of finding an equally good job same as men?
+
+First, we need to subset our dataset down to the variables of interest:
+**year**, **sex** and **jobfind**. Next step is to split data into bins according to the year of study.
+
+I will split data into 3 bins: "70s and 80s" (1972-1989), "90s" (1990-1999), and "2000s" (2000-2012), and then summarise counts for further plotting.
+
+```{r}
+#subsetting the data, filtering and adding column with classification by year.
+sex_discrimination = select(gss, year, sex, jobfind)
+sex_discrimination <- sex_discrimination %>% 
+  mutate(y_label = cut(sex_discrimination$year, breaks = c(1971, 1989, 1999, 2012), labels = c("70s and 80s","90s","2000s")))
+sex_discrimination <- sex_discrimination %>% filter(!is.na(jobfind))
+#grouping and summarizing the data by intervals
+#general count
+general_sd <- sex_discrimination %>%
+  group_by(sex, jobfind) %>%
+  summarise(count = n()) %>%
+  mutate(perc=count/sum(count))
+#70s and 80s
+svn_sd <- sex_discrimination %>%
+  filter(y_label == "70s and 80s") %>%
+  group_by(sex, jobfind) %>%
+  summarise(count = n()) %>%
+  mutate(perc=count/sum(count))
+#90s
+nin_sd <- sex_discrimination %>%
+  filter(y_label == "90s") %>%
+  group_by(sex, jobfind) %>%
+  summarise(count = n()) %>%
+  mutate(perc=count/sum(count))
+#2000s
+zeroes_sd <- sex_discrimination %>%
+  filter(y_label == "2000s") %>%
+  group_by(sex, jobfind) %>%
+  summarise(count = n()) %>%
+  mutate(perc=count/sum(count))
+```
+
+Now let's examine the distribution visually.
+
+```{r}
+#Plot for general distribution
+p1 <- ggplot(general_sd, aes(x = sex, y = perc*100, fill = jobfind)) +
+  geom_bar(stat="identity") +
+  labs(title = "all years", x = "Sex", y = "percentage", fill = "Job find:") +
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 0, hjust = 1))
+#Plot for 70s and 80s
+p2 <- ggplot(svn_sd, aes(x = sex, y = perc*100, fill = jobfind)) +
+  geom_bar(stat="identity") +
+  labs(title = "70s and 80s", x = "Sex", y = "percentage", fill = "Job find:") +
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 0, hjust = 1), legend.position = "bottom")
+#Plot for 90s
+p3 <- ggplot(nin_sd, aes(x = sex, y = perc*100, fill = jobfind)) +
+  geom_bar(stat="identity") +
+  labs(title = "90s", x = "Sex", y = "percentage", fill = "Job find:") +
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 0, hjust = 1), legend.position = "bottom")
+#Plot for 2000s
+p4 <- ggplot(zeroes_sd, aes(x = sex, y = perc*100, fill = jobfind)) +
+  geom_bar(stat="identity") +
+  labs(title = "2000s", x = "Sex", y = "percentage", fill = "Job find:") +
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 0, hjust = 1), legend.position = "bottom")
+#Extracting legend
+g_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)}
+my_legend = g_legend(p1)
+#Combining plots together
+grid.arrange(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"), p3 + theme(legend.position="none"), p4 + theme(legend.position="none"), my_legend, layout_matrix=rbind(c(1,1,2,2,5), c(3,3,4,4,5)))
+
+```
+
+It looks like there isn't much difference, at least it is not detectable visually.
+
+Let's examine summarized tables to get actual numbers.
+
+```{r}
+#Output summarized tables
+kable(general_sd, caption = "all years")
+kable(svn_sd, caption = "70s and 80s")
+kable(nin_sd, caption = "90s")
+kable(zeroes_sd, caption = "2000s")
+```
+
+The difference between proprtions appears to be ~0.5 percent at best. Which theoritically might be enough to detect the difference, given the large sample size.
+
+* * *
+
+## Part 4: Inference
+
+First lets state the hypotheses.
+
+$H_0:$ Perception of probability of finding an equally good job **does not depend** on sex.
+
+$H_A:$ Perception of probability of finding an equally good job **does depend** on sex.
+
+Next let's check the conditions neccessary to perform $\chi^2$ test.
+
+1. Random sampling
+* Even though stratification techniques were used, individuals were selected randomly.
+2. Both variables are categorical
+* Variables **sex** and **jobfind** are categorical with 2 and 3 levels.
+3. Each cell contains more than 10 samples
+* Smallest number in a cell in the contingency tables is 700. So the condition is met.
+4. Events are mutually exclusive
+* In other words in our data we don't have individuals who are< for example, male and female at the same time. Also sum of probabilities in a row of contingency table adds up to 1.
+5. There are no cells containing 0 observations.
+* We don't have cell containing 0 observations in the contingency tables.
+
+Since the conditions mentioned the above are met, we can use $\chi^2$ **test of independence**. This test should be used becaused it allows to check for dependence in a two way tabe. Or in other words, how likely it is that difference arrose just by chance.
+
+No other methods are applicable, because we have two categorical variables, one of which contains more than 2 levels. All other methods mentioned in the course compare **either two proportions, or numerical variables**.
+
+* Another important thing to note is that null hypothesis assumes **independence**, otherwise $\chi^2$ would be inaplicable.
+
+First let's check if there is a dependency **regardless of year**. Let's stick with standard 0.95 confidence interval.
+
+```{r}
+#create contingency table
+discrimination_all_years = table(sex_discrimination$sex, sex_discrimination$jobfind)
+#calculate Chi squared test statistic.
+chisq.test(discrimination_all_years)
+```
+We can see that $\chi^2$ is equal to 4.6 which corresponds to p-value of 0.098. This tells us that probability of obtaining $\chi^2 \geq 4.6$ is ~10%, with df = 2. To reject $H_0$ we need $\chi^2$ value, with corresponding probability of obtaining it 5% or less ($\chi^2 \geq 5.99$ for degrees of freedom = 2). Hence we **do not reject** the null hypothesis.
+
+Now let's check if there is a dependency on a subset inclurding years **1972 to 1989**.
+
+```{r}
+#create contingency table
+discrimination_780s = 
+  sex_discrimination %>% 
+  filter(sex_discrimination$y_label == "70s and 80s")
+discrimination_780s = table(discrimination_780s$sex, discrimination_780s$jobfind)
+
+#calculate Chi squared test statistic.
+chisq.test(discrimination_780s)
+```
+Again, we cannot reject $H_0$ because p-value is equal to 0.0791 and larger than 0.05.
+
+Let's examine the **90s** bin.
+
+```{r}
+#create contingency table
+discrimination_90s = 
+  sex_discrimination %>% 
+  filter(sex_discrimination$y_label == "90s")
+discrimination_90s = table(discrimination_90s$sex, discrimination_90s$jobfind)
+
+#calculate Chi squared test statistic.
+chisq.test(discrimination_90s)
+```
+Calculated p-value 0.6686 > 0.05, thus we **can not reject** the null hypothesis.
+
+And finally **2000s**
+```{r}
+#create contingency table
+discrimination_2000s = 
+  sex_discrimination %>% 
+  filter(sex_discrimination$y_label == "2000s")
+discrimination_2000s = table(discrimination_2000s$sex, discrimination_2000s$jobfind)
+
+#calculate Chi squared test statistic.
+chisq.test(discrimination_2000s)
+```
+Again our p-value is larger than it needs to be to reject null hypothesis. 0.7991 > 0.05. 
+
+> Conclusion: After conducting $\chi^2$ test we **failed to reject the null hypothesis** in all blocks. Null hypothesis states that sex and ease of finding equally good job are independent. Thus differences in proportions are due to chance. 
+
+Difference between p-values between 90s and 2000s is more ten fold. In this light it would be interesting to take into account job roles of respondents, and block our sample by occupation types. 
+
+**Confidence intervals** for proportions were not calculated because we were comparing variables, one of which contained more than three levels, using statistical test ($\chi^2$) which is not based on normal distribution.

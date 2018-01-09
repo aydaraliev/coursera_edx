@@ -1,0 +1,436 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+The study is designed to measure behavioral risk factors for the adult population of the US. The data set contains state-specific data on health status, health care access, tobacco use, diet, exercise, immunization and other relevant information, collected annualy via telephone interviews.
+
+The data matrix dimensions is 491775 by 330. Which means that almost half a million respondents across the US were included in the survey. Individuals were selected **randomly** which allows us to investigate association. The study is **observational** by nature, which means we can only imply **association, but not causation** between explanatory and response variables.
+
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1: What is the relationship between age, smoking and general health problems?**
+
+**Research quesion 2: Can we confirm the association between smoking and cancer?**
+
+**Research quesion 3:Research quesion 3: Are smokers at higher risk of cardiovascular diseases (Infarction, Stroke)?**
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+First step is to subset the dataset. Variables of interest are:
+
+**For the first question**
+
+* _rfsmok3 - Current Smoking Calculated Variable
+
+* _rfhlth - Adults With Good Or Better Health
+
+* physhlth - Number Of Days Physical Health Not Good
+
+* _smoker3 -  Computed Smoking Status
+
+* _ageg5yr - Age
+
+
+**For the second question**
+
+* _smoker3 -  Computed Smoking Status
+
+* chcscncr -  (Ever Told) You Had Skin Cancer?
+
+* chcocncr - (Ever Told) You Had Any Other Types Of Cancer?
+
+* _ageg5yr - Age
+
+**For the third question**
+
+* _smoker3 -  Computed Smoking Status
+
+* cvdstrk3 - Ever Diagnosed With A Stroke
+
+* cvdinfr4 - Ever Diagnosed With Heart Attack
+
+* _ageg5yr - Age
+
+```{r}
+brfss2013 %>% 
+  select(X_rfsmok3, X_ageg5yr, genhlth, physhlth, X_rfhlth, X_smoker3, X_rfhype5, cvdstrk3, cvdinfr4, cvdcrhd4, chcscncr, chcocncr) ->
+  smoking_health
+```
+
+**Research quesion 1: What is the relationship between smoking, age and general health problems?**
+
+First, let's examine the age distribution of smokers:
+
+```{r}
+p1 <- ggplot(smoking_health, aes(X_ageg5yr)) + 
+  geom_bar(aes(fill = X_rfsmok3)) + 
+  labs(x = "Age", y = "count", fill = "Smoking?") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+
+smk_age_prop <- smoking_health %>% 
+  group_by(X_ageg5yr, X_rfsmok3) %>%
+  filter(!is.na(X_ageg5yr)) %>%
+  filter(!is.na(X_rfsmok3)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+p2 <- ggplot(smk_age_prop, aes(x = X_ageg5yr, y = perc*100, fill = X_rfsmok3)) +
+  geom_bar(stat="identity") +
+  labs(x = "Age", y = "percent", fill = "Smoking?") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+
+grid.arrange(p1, p2, ncol = 2)
+
+```
+
+The distribution looks left skewed, reflecting ageing population of the US. Proportion of smokers in ages 59 or younger is about 22 percent. In ages 60 and older the proportion of smokers to a minum level of 3.5 percent.
+
+Next step is to check how age associates with general health:
+
+```{r}
+p3 <- ggplot(smoking_health, aes(X_ageg5yr)) + 
+  geom_bar(aes(fill = X_rfhlth)) + 
+  labs(x = "Age", y = "count", fill = "Health status") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.direction = "vertical")
+
+smk_health_prop <- smoking_health %>% 
+  group_by(X_ageg5yr, X_rfhlth) %>%
+  filter(!is.na(X_ageg5yr)) %>%
+  filter(!is.na(X_rfhlth)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+p4 <- ggplot(smk_health_prop, aes(x = X_ageg5yr, y = perc*100, fill = X_rfhlth)) +
+  geom_bar(stat="identity") +
+  labs(x = "Age", y = "percent", fill = "Health status") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.direction = "vertical")
+
+grid.arrange(p3, p4, ncol = 2)
+```
+
+It is not surprising that proportion of people with "Fair or poor" health is increasing with age. At the same time the proportion of smokers decreases. This is an interesting find because it may distort the association between smoking and general health. 
+
+Looks like we need to explore more descriptive _smoker3 (4 levels) variable which is more descriptive than _rfsmok3 (2 levels).
+
+```{r}
+smk_quitters <- smoking_health %>% 
+  group_by(X_ageg5yr, X_smoker3) %>%
+  filter(!is.na(X_ageg5yr)) %>%
+  filter(!is.na(X_smoker3)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+q1 <- ggplot(smoking_health, aes(X_ageg5yr)) + 
+  geom_bar(aes(fill = X_smoker3)) + 
+  labs(x = "Age", y = "count", fill = "Smoker") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.direction = "vertical")
+
+q2 <- ggplot(smk_quitters, aes(x = X_ageg5yr, y = perc*100, fill = X_smoker3)) +
+  geom_bar(stat="identity") +
+  labs(x = "Age", y = "percent", fill = "Health status") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "bottom", legend.direction = "vertical")
+
+grid.arrange(q1, q2, ncol = 2)
+
+```
+
+As expected proportion of individuals who quit smoking increases with age. The proportion of former smokers is about 40% in age group older than 60.
+
+Now we need to find out how general health of smoker population compares to the health of non smoker population.
+
+```{r}
+gen_health = table(smoking_health$X_rfsmok3, smoking_health$genhlth)
+gen_health = apply(gen_health, 2, prop.table)
+gen_health
+```
+
+We can see that proportion of smoker increases as general health level decreases. With only 9.6 percents of smokers among people with excellent health, to 27.3 percent of smokers among people with poor health.
+
+Visualising this finding:
+
+```{r}
+smk_vs_non_smkr <- smoking_health %>% 
+  group_by(X_rfsmok3, genhlth) %>%
+  filter(!is.na(genhlth)) %>%
+  filter(!is.na(X_rfsmok3)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+smk_vs_non_smkr_2 <- smoking_health %>% 
+  group_by(genhlth, X_rfsmok3) %>%
+  filter(!is.na(genhlth)) %>%
+  filter(!is.na(X_rfsmok3)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+p1 = ggplot(smk_vs_non_smkr, aes(x = X_rfsmok3, y = perc*100, fill = genhlth)) +
+  geom_bar(stat="identity") +
+  labs(x = "Smoker?", y = "percent", fill = "Health status")
+
+p2 = ggplot(smk_vs_non_smkr_2, aes(x = genhlth, y = perc*100, fill = X_rfsmok3)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Smoker?") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+We can see that smokers estimate their health lower than the non smokers. In fact proportion of individuals estimating their health as poor is twice larger for smokers. 
+
+Let's check if there is a difference in number of days when physical health is "not good" between smokers and non smokes.
+
+```{r}
+#filter NA values
+days_seek <- smoking_health %>% 
+  filter(!is.na(X_rfsmok3)) %>%
+  filter(!is.na(physhlth))
+
+means <- aggregate(physhlth ~  X_rfsmok3, days_seek, mean)
+
+
+ggplot(data=days_seek, aes(x=X_rfsmok3, y=physhlth, fill=X_rfsmok3)) + geom_boxplot() +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", 
+               shape=18, size=3, show.legend = FALSE) + 
+  geom_text(data = means, aes(label = physhlth, y = physhlth + 0.08))
+
+```
+
+We can see that IQR is twice larger for smokers. Mean number of days when "health is not good" is ~4 for non smokers and 6.3 days for smokers.
+
+**Conclusion**: General health of smokers is worse than general health of non-smokers. Proportion of people who estimate their health as "Excellent" is twice lower among smokers. Also proportion of individuals with poor health is twice bigger among smokers. Proprtion of smokers in population starting to decrease from ~22% as people age, reaching minimum of 3.5 percent in people older than 50. 
+
+
+**Research quesion 2: Can we confirm the association between smoking and cancer?**
+
+Since we are not interested in differentiation between skin cancer and other types of cancer we will use ifelse() function to convert two variables into one. And then examine how this "merged" variable relates to smoking status.
+
+```{r}
+smk_cancer <- smoking_health %>% 
+  select(X_smoker3, X_ageg5yr, chcscncr, chcocncr) %>%
+  mutate(ever_cancer = ifelse(chcscncr == "Yes" | 
+                                chcocncr == "Yes", "Yes", "No"))
+  
+s1 = ggplot(smk_cancer, aes(x = X_smoker3, fill = ever_cancer)) +
+  geom_bar() + theme(axis.text.x = element_text(angle = 70, hjust = 1)) +
+  labs(x = "Health status", y = "count", fill = "Had cancer?")
+
+smk_cancer_perc <- smk_cancer %>% 
+  group_by(X_smoker3, ever_cancer) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(ever_cancer)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+s2 = ggplot(smk_cancer_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = ever_cancer)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Had cancer?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+
+grid.arrange(s1,s2, ncol = 2)
+```
+
+Results show that cancer rates among former smokers is approximately two times higher than in other groups. Which is probably because smoker proportion drops in older citizens. Let's split our data set into two **blocks**, younger and older than 60.
+
+```{r}
+smk_bp = split(smk_cancer, smk_cancer$X_ageg5yr)
+younger_than_60 = rbind(smk_bp$`Age 18 to 24`, smk_bp$`Age 25 to 29`,
+                        smk_bp$`Age 30 to 34`, smk_bp$`Age 35 to 39`,
+                        smk_bp$`Age 40 to 44`, smk_bp$`Age 50 to 54`,
+                        smk_bp$`Age 55 to 59`)
+older_than_60 = rbind(smk_bp$`Age 60 to 64`, smk_bp$`Age 65 to 69`,
+                      smk_bp$`Age 70 to 74`, smk_bp$`Age 75 to 79`,
+                      smk_bp$`Age 80 or older`)
+
+younger_than_60_perc <- younger_than_60 %>% 
+  group_by(X_smoker3, ever_cancer) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(ever_cancer)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+older_than_60_perc <- older_than_60 %>% 
+  group_by(X_smoker3, ever_cancer) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(ever_cancer)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+s1 = ggplot(younger_than_60_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = ever_cancer)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Had cancer?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+
+s2 = ggplot(older_than_60_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = ever_cancer)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Had cancer?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+
+grid.arrange(s1, s2, ncol=2)
+```
+
+We see that splitting the population into two cohorts straighten the proprtion of people who were ever diagnosed with cancer. The proportion of cancer occurences is still a little bit higher among former smokers. Lets examine the actual numbers.
+
+```{r}
+apply(table(younger_than_60$X_smoker3, younger_than_60$ever_cancer),
+      1, prop.table)
+```
+The table shows proportion of people of people who had cancer in the population **younger that 60**. We see that among the smokers proprtion of people who had cancer is about 2 percent larger than among people who never smoked. Former smokers have the highest proportion of people who had cancer.
+
+```{r}
+apply(table(older_than_60$X_smoker3, older_than_60$ever_cancer),
+      1, prop.table)
+```
+
+The table shows proportion of people of people who had cancer in the population **older that 60**. Surprisingly we see that proportion of people who had cancer is lower among current smokers, than among people who never smoked. Also cancer rate among former smokers is 5 percent higher that among people who never smoked.
+
+**Conclusion**: Estimating risks of cancer requires more sophisticated approach of study/experimental design with more variables related to cancer. Higher proprotion of people who had cancer among former smokers probably can be explained by the fact that people quit to smoke once they get diagnosed with cancer. Overal the association seems weak.
+
+**Research quesion 3: Are smokers at higher risk of cardiovascular diseases (Infarction, Stroke)?**
+
+Since stroke and infaction have very similar physiology - tissue dying due to the lack of nutrition from surrounding blood vessels (constriction or wall breakage) I will merge two variables into one.
+
+```{r}
+smk_bp <- smoking_health %>% 
+  select(X_smoker3, X_ageg5yr, cvdstrk3, cvdinfr4) %>%
+  mutate(inf_or_strk = ifelse(cvdstrk3 == "Yes" | 
+                                cvdinfr4 == "Yes", "Yes", "No"))
+
+s1 = ggplot(smk_bp, aes(x = X_smoker3, fill = inf_or_strk)) +
+  geom_bar() + theme(axis.text.x = element_text(angle = 70, hjust = 1)) +
+  labs(x = "Health status", y = "count", fill = "Inf or Strk?")
+
+smk_bp_perc <- smk_bp %>% 
+  group_by(X_smoker3, inf_or_strk) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(inf_or_strk)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+s2 = ggplot(smk_bp_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = inf_or_strk)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Inf or Strk?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+
+grid.arrange(s1,s2, ncol = 2)
+
+```
+
+We see that proprtion of people diagnosed with infarction or stroke among smokers and former smokers is much higher than among people who never smoked.
+
+Let's examine the exact percentages.
+
+```{r}
+apply(table(smk_bp$X_smoker3, smk_bp$inf_or_strk),
+      1, prop.table)
+```
+
+We see that proportion of people who were diagnosed with infarction is almost twice as higher among smokers and former smokers.
+
+Let's examine if proportion differ among people younger and older than 60.
+
+```{r}
+smk_bp_s = split(smk_bp, smk_bp$X_ageg5yr)
+
+younger_than_60_s = rbind(smk_bp_s$`Age 18 to 24`, smk_bp_s$`Age 25 to 29`,
+                        smk_bp_s$`Age 30 to 34`, smk_bp_s$`Age 35 to 39`,
+                        smk_bp_s$`Age 40 to 44`, smk_bp_s$`Age 50 to 54`,
+                        smk_bp_s$`Age 55 to 59`)
+older_than_60_s = rbind(smk_bp_s$`Age 60 to 64`, smk_bp_s$`Age 65 to 69`,
+                      smk_bp_s$`Age 70 to 74`, smk_bp_s$`Age 75 to 79`,
+                      smk_bp_s$`Age 80 or older`)
+
+
+younger_than_60_s_perc <- younger_than_60_s %>% 
+  group_by(X_smoker3, inf_or_strk) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(inf_or_strk)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+older_than_60_s_perc <- older_than_60_s %>% 
+  group_by(X_smoker3, inf_or_strk) %>%
+  filter(!is.na(X_smoker3)) %>%
+  filter(!is.na(inf_or_strk)) %>%
+  summarise(count=n()) %>% 
+  mutate(perc=count/sum(count))
+
+s1 = ggplot(younger_than_60_s_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = inf_or_strk)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Smoking?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+
+s2 = ggplot(older_than_60_s_perc, aes(x = X_smoker3, 
+                                 y = perc*100, fill = inf_or_strk)) +
+  geom_bar(stat="identity") +
+  labs(x = "Health status", y = "percent", fill = "Smoking?") +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+grid.arrange(s1, s2, ncol = 2)
+
+```
+
+Splitting the population into two blocks by age normalized the results and showed that proportion of people diagnosed with infarction or stroke is lower among former smokers compared to smokers. 
+
+Let's look at the actual numbers.
+
+```{r}
+apply(table(younger_than_60_s$X_smoker3, younger_than_60_s$inf_or_strk),
+      1, prop.table)
+
+```
+
+And for the people older than 60:
+
+```{r}
+apply(table(older_than_60_s$X_smoker3, older_than_60_s$inf_or_strk),
+      1, prop.table)
+```
+
+We can see that risk of infaction is at least two and in the case of people younger than 60 three times higher.
+
+**Conclusion**: Smokers are at higher risk of infarction and stroke. 
