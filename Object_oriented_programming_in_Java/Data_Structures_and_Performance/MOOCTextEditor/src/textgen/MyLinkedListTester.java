@@ -115,6 +115,20 @@ public class MyLinkedListTester {
 		assertEquals("Remove: check size is correct ", 2, list1.size());
 		
 		// TODO: Add more tests here
+		
+		try {
+			longerList.remove(-1);
+			fail("Check negative index remove");
+		} catch (IndexOutOfBoundsException e){
+			
+		}
+		
+		try{
+			shortList.remove(5);
+			fail("Check out of bounds index remove");
+		} catch (IndexOutOfBoundsException e) {
+			
+		}
 	}
 	
 	/** Test adding an element into the end of the list, specifically
@@ -124,6 +138,16 @@ public class MyLinkedListTester {
 	public void testAddEnd()
 	{
         // TODO: implement this test
+		shortList.add("Hello");
+		assertEquals("Check if added element is at the end: ", 
+				"Hello", shortList.get(2));
+		try {
+			shortList.add(null);
+			fail("check add method");
+			
+		}
+		catch (NullPointerException e) {
+		}
 		
 	}
 
@@ -133,6 +157,12 @@ public class MyLinkedListTester {
 	public void testSize()
 	{
 		// TODO: implement this test
+		//System.out.println(shortList);
+		assertEquals("check length of shortList, must be 2", 2, shortList.size());
+		list1.add(1);
+		list1.add(2);
+		//System.out.println(list1);
+		assertEquals("check length of numeric list1, must be 5", 5, list1.size());
 	}
 
 	
@@ -145,6 +175,40 @@ public class MyLinkedListTester {
 	public void testAddAtIndex()
 	{
         // TODO: implement this test
+		list1.add(1, 15);
+		assertSame("Check element at index", 15, list1.get(1));
+		shortList.add(0, "Z");
+		assertEquals("Check element at index", "Z", shortList.get(0));
+		try {
+			list1.add(15, 3);
+			fail("check add at index method, was able to add at unexisting index");
+		}
+		catch (IndexOutOfBoundsException e) {
+			
+		}
+		try {
+			shortList.add(-4, "F");
+			fail("check add at index method, was able to add at unexisting index");
+		}
+		catch (IndexOutOfBoundsException e) {
+			
+		}
+		try {
+			emptyList.add(0, 1);
+			System.out.println(emptyList);
+		}
+		catch (IndexOutOfBoundsException e) {}
+		try {
+			emptyList.remove(0);
+			System.out.println(emptyList);
+		}
+		catch(IndexOutOfBoundsException e) {}
+		try {
+			emptyList.add(0, 1);
+			System.out.println(emptyList);
+		}
+		catch(IndexOutOfBoundsException e) {}
+		
 		
 	}
 	
@@ -153,6 +217,24 @@ public class MyLinkedListTester {
 	public void testSet()
 	{
 	    // TODO: implement this test
+		Integer first_el = longerList.set(0, 15);
+		assertSame("Check if returned value is 0", 0, first_el);
+		assertSame("Check if the first values in the list is 15", 
+				15, longerList.get(0));
+		try{
+			longerList.set(1,null);
+			fail("added null");
+		} catch (NullPointerException e) {
+			
+		}
+		
+		try{
+			longerList.set(42,22);
+			fail("added to not existing index");
+		} catch (IndexOutOfBoundsException e) {
+			
+		}
+		
 	    
 	}
 	
